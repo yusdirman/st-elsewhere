@@ -71,12 +71,17 @@ module StElsewhere
       through_class        = through.to_s.singularize.camelize.constantize
       current_associations = self.send("#{association_singular}_ids")
       desired_associations = self.class.associations_to_association_ids(new_associations)
-
       removed_target_associations = current_associations - desired_associations
       new_target_associations     = desired_associations - current_associations
 
-      self.send("remove_#{association_singular}_associations", through_class, removed_target_associations) unless current_associations.nil?
-      self.send("add_#{association_singular}_associations", through_class, association_id, new_target_associations)
+      unless self.new_record?
+        self.send("remove_#{association_singular}_associations", through_class, removed_target_associations) unless removed_target_associations.blank?
+        self.send("add_#{association_singular}_associations", through_class, association_id, new_target_associations) unless new_target_associations.blank?
+      else
+        new_associations.each do |association_id|
+          self.user_apps.build("#{association_singular}_id" => association_id)
+        end
+      end
     end
 
     # Hospital#doctor_ids=
@@ -86,9 +91,7 @@ module StElsewhere
 
     # Hospital#remove_doctor_associations (private)
     define_method("remove_#{association_singular}_associations") do |through_class, removed_target_associations|
-      association_instances_to_remove =
-        through_class.send("find_by", "#{my_foreign_key}=#{self.id}", "#{target_association_foreign_key}=#{removed_target_associations}")
-      through_class.delete(association_instances_to_remove)
+      through_class.where("#{target_association_foreign_key} in (#{removed_target_associations.join(",")})").delete_all
     end
 
     # Hospital#add_doctor_associations (private)
@@ -100,7 +103,8 @@ module StElsewhere
       end
     end
 
-    private "remove_#{association_singular}_associations".to_sym, "add_#{association_singular}_associations".to_sym
+    private "remove_#{association_singular}_associations".to_sym
+    private "add_#{association_singular}_associations".to_sym
 
   end
 
